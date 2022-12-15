@@ -7,8 +7,8 @@ import subprocess
 from typing import Iterable
 from unittest import mock
 
-import pg_test
-from pg_test import _core as core
+import pg_docker
+from pg_docker import _core as core
 
 import psycopg2
 import pytest
@@ -166,14 +166,14 @@ class TestDatabaseCleaner:
 
 
 def test_connect_to_a_database(postgres_image_tag: str) -> None:
-    with pg_test.database_pool(
+    with pg_docker.database_pool(
         postgres_image_tag=postgres_image_tag
     ) as db_pool, db_pool.database() as database:
         psycopg2.connect(**database.connection_kwargs())
 
 
 def test_connect_to_many_databases_subsequently(postgres_image_tag: str) -> None:
-    with pg_test.database_pool(
+    with pg_docker.database_pool(
         postgres_image_tag=postgres_image_tag,
         max_pool_size=4,
     ) as db_pool:

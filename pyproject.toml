@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "pg-test"
+name = "pg-docker"
 version = "0.1.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-packages = [{include = "pg_test"}]
+packages = [{include = "pg_docker"}]
 classifiers = [
     "Framework :: Pytest"
 ]
@@ -22,7 +22,7 @@ isort = "^5.10.1"
 
 
 [tool.poetry.plugins."pytest11"]
-"pg_test" = "pg_test._plugin"
+"pg_docker" = "pg_docker._plugin"
 
 
 [build-system]

@@ -1,9 +1,9 @@
 import pytest
-from pg_test import database_pool
+from pg_docker import database_pool
 
 
 def pytest_addoption(parser):
-    group = parser.getgroup("pg_test")
+    group = parser.getgroup("pg_docker")
     group.addoption(
         "--postgres-image-tag",
         action="store",

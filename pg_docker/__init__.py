@@ -1,4 +1,4 @@
-from pg_test._core import (
+from pg_docker._core import (
     DatabasePool,
     DatabaseParams,
     database_pool,
