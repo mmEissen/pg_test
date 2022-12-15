@@ -5,6 +5,10 @@ description = ""
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 packages = [{include = "pg_test"}]
+classifiers = [
+    "Framework :: Pytest"
+]
+
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -15,6 +19,11 @@ psycopg2 = "^2.9.5"
 pytest = "^7.2.0"
 black = "^22.10.0"
 isort = "^5.10.1"
+
+
+[tool.poetry.plugins."pytest11"]
+"pg_test" = "pg_test._plugin"
+
 
 [build-system]
 requires = ["poetry-core"]
