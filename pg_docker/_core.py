@@ -16,8 +16,8 @@ _LONG_TIMEOUT = _SHORT_TIMEOUT * 10
 
 class DatabaseCleaner:
     def __init__(
-        self, 
-        root_params: DatabaseParams, 
+        self,
+        root_params: DatabaseParams,
         clean_dbs: multiprocessing.Queue[DatabaseParams],
         dirty_dbs: multiprocessing.Queue[DatabaseParams],
     ) -> None:
@@ -34,35 +34,47 @@ class DatabaseCleaner:
         return cursor
 
     def create_db(self, db_params: DatabaseParams) -> None:
-        self._cursor.execute(f"""
+        self._cursor.execute(
+            f"""
             CREATE USER {db_params.user}
                 PASSWORD '{db_params.password}'
-        """)
-        self._cursor.execute(f"""
+            """
+        )
+        self._cursor.execute(
+            f"""
             CREATE DATABASE {db_params.dbname}
                 OWNER = {db_params.user}
-        """)
-    
+            """
+        )
+
     def drop_db(self, db_params: DatabaseParams) -> None:
-        self._cursor.execute(f"""
+        self._cursor.execute(
+            f"""
             SELECT pg_terminate_backend(pg_stat_activity.pid)
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid() 
             AND pg_stat_activity.datname = '{db_params.dbname}'
-        """)
-        self._cursor.execute(f"""
+            """
+        )
+        self._cursor.execute(
+            f"""
             DROP DATABASE IF EXISTS {db_params.dbname}
-        """)
-        self._cursor.execute(f"""
+        """
+        )
+        self._cursor.execute(
+            f"""
             DROP USER IF EXISTS {db_params.user}
-        """)
-    
+            """
+        )
+
     def drop_all_connections(self) -> None:
-        self._cursor.execute("""
+        self._cursor.execute(
+            """
             SELECT pg_terminate_backend(pg_stat_activity.pid)
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
-        """)
+            """
+        )
 
     def maybe_clean_a_dirty_db(self) -> None:
         try:
@@ -81,7 +93,7 @@ class DatabaseCleaner:
         self.drop_all_connections()
         self._cursor.close()
         self._cursor.connection.close()
-    
+
     def stop(self) -> None:
         self._stop_event.set()
 
@@ -94,14 +106,16 @@ class DatabasePool:
     def __post_init__(self) -> None:
         self._dirty_dbs: multiprocessing.Queue[DatabaseParams] = multiprocessing.Queue()
         self._clean_dbs: multiprocessing.Queue[DatabaseParams] = multiprocessing.Queue()
-        self._cleaner = DatabaseCleaner(self.root_params, self._clean_dbs, self._dirty_dbs)
-        
+        self._cleaner = DatabaseCleaner(
+            self.root_params, self._clean_dbs, self._dirty_dbs
+        )
+
         self._pool_size = 0
 
         self._wait_until_ready()
         self._cleanup_process = self._launch_cleanup_process()
         self._saturate_pool()
-    
+
     def _saturate_pool(self) -> None:
         while self._pool_size < self.max_pool_size:
             self._add_db_to_pool()
@@ -117,7 +131,7 @@ class DatabasePool:
 
     def _launch_cleanup_process(self) -> multiprocessing.Process:
         process = multiprocessing.Process(
-            target=self._cleaner.run_forever, 
+            target=self._cleaner.run_forever,
             name="test-database-cleanup",
             daemon=True,
         )
@@ -144,7 +158,7 @@ class DatabasePool:
             yield database
         finally:
             self._dirty_dbs.put(database)
-        
+
     def stop(self):
         self._cleaner.stop()
 
@@ -163,16 +177,18 @@ class DatabaseParams:
 
 def get_free_port() -> int:
     sock = socket.socket()
-    sock.bind(('', 0))
+    sock.bind(("", 0))
     return sock.getsockname()[1]
 
 
 @contextlib.contextmanager
-def database_pool(*, postgres_image_tag: str = "latest", max_pool_size: int = 5) -> Generator[DatabasePool, None, None]:
+def database_pool(
+    *, postgres_image_tag: str = "latest", max_pool_size: int = 5, docker_command: str = "docker"
+) -> Generator[DatabasePool, None, None]:
     port = get_free_port()
     docker_process = subprocess.Popen(
         [
-            "docker",
+            docker_command,
             "run",
             "--rm",
             "-t",
@@ -189,7 +205,7 @@ def database_pool(*, postgres_image_tag: str = "latest", max_pool_size: int = 5)
             user="postgres",
             password="password",
         ),
-        max_pool_size=max_pool_size
+        max_pool_size=max_pool_size,
     )
     try:
         yield pool
