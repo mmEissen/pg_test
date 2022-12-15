@@ -12,6 +12,9 @@ import contextlib
 
 _SHORT_TIMEOUT = 0.1
 _LONG_TIMEOUT = _SHORT_TIMEOUT * 10
+_PASSWORD = "password"
+_PG_ROOT_DATABASE = "postgres"
+_PG_ROOT_USER = "postgres"
 
 
 class DatabaseCleaner:
@@ -193,7 +196,7 @@ def database_pool(
             "--rm",
             "-t",
             f"-p{port}:5432",
-            "-ePOSTGRES_PASSWORD=password",
+            f"-ePOSTGRES_PASSWORD={_PASSWORD}",
             f"postgres:{postgres_image_tag}",
         ],
     )
@@ -201,9 +204,9 @@ def database_pool(
         DatabaseParams(
             host="0.0.0.0",
             port=port,
-            dbname="postgres",
-            user="postgres",
-            password="password",
+            dbname=_PG_ROOT_DATABASE,
+            user=_PG_ROOT_USER,
+            password=_PASSWORD,
         ),
         max_pool_size=max_pool_size,
     )
