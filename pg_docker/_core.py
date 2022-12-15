@@ -1,7 +1,7 @@
 from __future__ import annotations
 import functools
 import queue
-from typing import Generator
+from typing import Callable, Generator
 
 import subprocess
 import multiprocessing
@@ -12,9 +12,17 @@ import contextlib
 
 _SHORT_TIMEOUT = 0.1
 _LONG_TIMEOUT = _SHORT_TIMEOUT * 10
-_PASSWORD = "password"
+_PG_PASSWORD = "password"
 _PG_ROOT_DATABASE = "postgres"
 _PG_ROOT_USER = "postgres"
+
+
+class CleanupProcessTerminatedError(Exception):
+    pass
+
+
+def _noop_setup_db(db_params: DatabaseParams) -> None:
+    return
 
 
 class DatabaseCleaner:
@@ -23,11 +31,13 @@ class DatabaseCleaner:
         root_params: DatabaseParams,
         clean_dbs: multiprocessing.Queue[DatabaseParams],
         dirty_dbs: multiprocessing.Queue[DatabaseParams],
+        setup_db: Callable[[DatabaseParams], None] = _noop_setup_db,
     ) -> None:
         self._root_params = root_params
         self._stop_event = multiprocessing.Event()
         self.clean_dbs = clean_dbs
         self.dirty_dbs = dirty_dbs
+        self.setup_db = setup_db
 
     @functools.cached_property
     def _cursor(self) -> psycopg2.cursor:
@@ -86,6 +96,7 @@ class DatabaseCleaner:
             return
         self.drop_db(database_to_clean)
         self.create_db(database_to_clean)
+        self.setup_db(database_to_clean)
         self.clean_dbs.put(database_to_clean)
 
     def run_forever(
@@ -105,12 +116,13 @@ class DatabaseCleaner:
 class DatabasePool:
     root_params: DatabaseParams
     max_pool_size: int
+    setup_db: Callable[[DatabaseParams], None] = _noop_setup_db
 
     def __post_init__(self) -> None:
         self._dirty_dbs: multiprocessing.Queue[DatabaseParams] = multiprocessing.Queue()
         self._clean_dbs: multiprocessing.Queue[DatabaseParams] = multiprocessing.Queue()
         self._cleaner = DatabaseCleaner(
-            self.root_params, self._clean_dbs, self._dirty_dbs
+            self.root_params, self._clean_dbs, self._dirty_dbs, self.setup_db
         )
 
         self._pool_size = 0
@@ -150,13 +162,17 @@ class DatabasePool:
             else:
                 return
 
+    def _get_db_and_check_on_cleanup(self) -> DatabaseParams:
+        while True:
+            try:
+                return self._clean_dbs.get(timeout=_SHORT_TIMEOUT)
+            except (queue.Empty, multiprocessing.TimeoutError):
+                if not self._cleanup_process.is_alive():
+                    raise CleanupProcessTerminatedError()
+
     @contextlib.contextmanager
     def database(self) -> Generator[DatabaseParams, None, None]:
-        try:
-            database = self._clean_dbs.get(timeout=_SHORT_TIMEOUT)
-        except queue.Empty:
-            # TODO maybe increase pool size? Or add cleanup workers?
-            database = self._clean_dbs.get()
+        database = self._get_db_and_check_on_cleanup()
         try:
             yield database
         finally:
@@ -186,7 +202,11 @@ def get_free_port() -> int:
 
 @contextlib.contextmanager
 def database_pool(
-    *, postgres_image_tag: str = "latest", max_pool_size: int = 5, docker_command: str = "docker"
+    *,
+    postgres_image_tag: str = "latest",
+    max_pool_size: int = 5,
+    docker_command: str = "docker",
+    setup_db: Callable[[DatabaseParams], None] = _noop_setup_db,
 ) -> Generator[DatabasePool, None, None]:
     port = get_free_port()
     docker_process = subprocess.Popen(
@@ -196,7 +216,7 @@ def database_pool(
             "--rm",
             "-t",
             f"-p{port}:5432",
-            f"-ePOSTGRES_PASSWORD={_PASSWORD}",
+            f"-ePOSTGRES_PASSWORD={_PG_PASSWORD}",
             f"postgres:{postgres_image_tag}",
         ],
     )
@@ -206,9 +226,10 @@ def database_pool(
             port=port,
             dbname=_PG_ROOT_DATABASE,
             user=_PG_ROOT_USER,
-            password=_PASSWORD,
+            password=_PG_PASSWORD,
         ),
         max_pool_size=max_pool_size,
+        setup_db=setup_db
     )
     try:
         yield pool

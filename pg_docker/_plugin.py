@@ -1,5 +1,5 @@
 import pytest
-from pg_docker import database_pool
+import pg_docker
 
 
 def pytest_addoption(parser):
@@ -21,13 +21,22 @@ def pytest_addoption(parser):
     )
 
 
+def _setup_db(db_params: pg_docker.DatabaseParams):
+    return
+
+
 @pytest.fixture(scope="session")
-def pg_database_pool(request):
+def pg_setup_db():
+    return _setup_db
+
+
+@pytest.fixture(scope="session")
+def pg_database_pool(request, pg_setup_db):
     postgres_image_tag = request.config.getoption("postgres_image_tag")
     max_pool_size = request.config.getoption("max_pool_size")
 
-    with database_pool(
-        postgres_image_tag=postgres_image_tag, max_pool_size=max_pool_size
+    with pg_docker.database_pool(
+        postgres_image_tag=postgres_image_tag, max_pool_size=max_pool_size, setup_db=pg_setup_db
     ) as db_pool:
         yield db_pool
 
