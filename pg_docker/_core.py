@@ -172,6 +172,8 @@ class DatabasePool:
 
     @contextlib.contextmanager
     def database(self) -> Generator[DatabaseParams, None, None]:
+        """Returns the connection parameters to a clean database."""
+
         database = self._get_db_and_check_on_cleanup()
         try:
             yield database
@@ -193,12 +195,28 @@ class DatabaseParamsDict(TypedDict):
 @dataclasses.dataclass(frozen=True)
 class DatabaseParams:
     host: str
+    "The hostname"
+
     port: int
+    "The port"
+
     dbname: str
+    "The database name"
+
     user: str
+    "The user name for the owner of the database"
+
     password: str
+    "The user's password"
 
     def connection_kwargs(self) -> DatabaseParamsDict:
+        """The connection parameters as a dictionary.
+        
+        This is compatible with the keyword arguments of `psycopg2.connect`:
+        ```
+        psycopg2.connect(**database_params.connection_kwargs())
+        ```
+        """
         return cast(DatabaseParamsDict, dataclasses.asdict(self))
 
 
@@ -216,6 +234,20 @@ def database_pool(
     docker_command: str = "docker",
     setup_db: Callable[[DatabaseParams], None] = _noop_setup_db,
 ) -> Generator[DatabasePool, None, None]:
+    """A context manager to create a database pool.
+
+    This will return an instance of `DatabasePool`.
+
+    Keyword Arguments:
+    postgres_image_tag: The docker image tag to use for the postgres container (default "latest")
+    max_pool_size: The maximum number of databases to keep ready in the pool (default: 5)
+    docker_command: The system command to run docker (default: "docker")
+    setup_db: A callable to setup your databases. This will be run in the background after 
+        commissioning each new database. The first argument to this callable is an instance of
+        `DatabaseParams`. The callable passed to `setup_db` has to be pickleable. See 
+        https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled for
+        more info. 
+    """
     port = get_free_port()
     docker_process = subprocess.Popen(
         [

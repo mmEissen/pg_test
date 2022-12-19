@@ -21,6 +21,7 @@ Note: *This package is mainly built with pytest in mind, but you can use the con
 
 ### Example
 
+With pytest:
 ```py
 import psycopg2
 
@@ -44,6 +45,32 @@ pytest_plugins = ["pg_docker"]
 ```
 You can find more details on how to activate plugins in the [pytest docs](https://docs.pytest.org/en/latest/how-to/plugins.html#requiring-loading-plugins-in-a-test-module-or-conftest-file)
 
-The plugin provides two fixtures which you can use in your tests: `pg_database_pool` and `pg_database`
+The plugin The following fixtures:
+
+ - `pg_database`: `DatabaseParams` for a clean database.
+ - `pg_database_pool`: A `DatabasePool` instance. Use this if you need more than one database in your tests at a time.
 
 
+### Configuring Database Migrations
+
+Use the below template in your `conftest.py` to configure how your databases are set up. 
+```py
+def setup_db(pg_params):
+    """Add any setup logic for your database in here."""
+    pass
+
+@pytest.fixture(scope="session")
+def pg_setup_db():
+    return setup_db
+```
+Note: *You might be inclined to edit the above code to nest the setup_db function inside of the fixture function. This will not work, because the fixture result needs to be [pickleable](https://docs.python.org/3/library/pickle.html#what-can-be-pickled-and-unpickled)!*
+
+
+### Advanced Usage (and other testing frameworks)
+
+For other use cases you can use the `database_pool` context manager:
+```py
+with database_pool() as db_pool:
+    with db_pool.database as db_params:
+        connection = psycopg2.connect(**db_params.connection_kwargs())
+```
