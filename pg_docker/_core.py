@@ -1,7 +1,7 @@
 from __future__ import annotations
 import functools
 import queue
-from typing import Callable, Generator
+from typing import Callable, Generator, TypedDict, cast
 
 import subprocess
 import multiprocessing
@@ -182,6 +182,14 @@ class DatabasePool:
         self._cleaner.stop()
 
 
+class DatabaseParamsDict(TypedDict):
+    host: str
+    port: int
+    dbname: str
+    user: str
+    password: str
+
+
 @dataclasses.dataclass(frozen=True)
 class DatabaseParams:
     host: str
@@ -190,8 +198,8 @@ class DatabaseParams:
     user: str
     password: str
 
-    def connection_kwargs(self) -> dict[str, object]:
-        return dataclasses.asdict(self)
+    def connection_kwargs(self) -> DatabaseParamsDict:
+        return cast(DatabaseParamsDict, dataclasses.asdict(self))
 
 
 def get_free_port() -> int:
