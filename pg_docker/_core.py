@@ -259,6 +259,8 @@ def database_pool(
             f"-ePOSTGRES_PASSWORD={_PG_PASSWORD}",
             f"postgres:{postgres_image_tag}",
         ],
+        stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
     )
     pool = DatabasePool(
         DatabaseParams(
