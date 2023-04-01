@@ -5,6 +5,7 @@ from typing import Callable, Generator, TypedDict, cast
 
 import subprocess
 import multiprocessing
+import queue
 import psycopg2
 import socket
 import dataclasses
@@ -92,7 +93,7 @@ class DatabaseCleaner:
     def maybe_clean_a_dirty_db(self) -> None:
         try:
             database_to_clean = self.dirty_dbs.get(timeout=_SHORT_TIMEOUT)
-        except multiprocessing.TimeoutError:
+        except (multiprocessing.TimeoutError, queue.Empty):
             return
         self.drop_db(database_to_clean)
         self.create_db(database_to_clean)
