@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pg-docker"
-version = "0.6.0"
+version = "0.7.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
@@ -11,7 +11,7 @@ classifiers = [
 
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.9"
 psycopg2 = "^2.9.5"
 
 
