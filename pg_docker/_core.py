@@ -130,19 +130,23 @@ class DatabaseCleaner:
 class DatabasePool:
     root_params: DatabaseParams
     max_pool_size: int
+    cleaning_workers: int
     setup_db: Callable[[DatabaseParams], None] = _noop_setup_db
 
     def __post_init__(self) -> None:
         self._dirty_dbs: multiprocessing.Queue[DatabaseParams] = multiprocessing.Queue()
         self._clean_dbs: multiprocessing.Queue[DatabaseParams] = multiprocessing.Queue()
-        self._cleaner = DatabaseCleaner(
-            self.root_params, self._clean_dbs, self._dirty_dbs, self.setup_db
-        )
+        self._cleaners = [
+            DatabaseCleaner(
+                self.root_params, self._clean_dbs, self._dirty_dbs, self.setup_db
+            )
+            for _ in range(self.cleaning_workers)
+        ]
 
         self._pool_size = 0
 
         self._wait_until_ready()
-        self._cleanup_process = self._launch_cleanup_process()
+        self._cleanup_processes = self._launch_cleanup_processes()
         self._saturate_pool()
 
     def _saturate_pool(self) -> None:
@@ -158,14 +162,18 @@ class DatabasePool:
         )
         self._dirty_dbs.put(new_database)
 
-    def _launch_cleanup_process(self) -> multiprocessing.Process:
-        process = multiprocessing.Process(
-            target=self._cleaner.run_forever,
-            name="test-database-cleanup",
-            daemon=True,
-        )
-        process.start()
-        return process
+    def _launch_cleanup_processes(self) -> list[multiprocessing.Process]:
+        processes = [
+            multiprocessing.Process(
+                target=cleaner.run_forever,
+                name=f"test-database-cleaner-{i}",
+                daemon=True,
+            )
+            for i, cleaner in enumerate(self._cleaners)
+        ]
+        for process in processes:
+            process.start()
+        return processes
 
     def _wait_until_ready(self) -> None:
         while True:
@@ -181,8 +189,9 @@ class DatabasePool:
             try:
                 return self._clean_dbs.get(timeout=_SHORT_TIMEOUT)
             except (queue.Empty, multiprocessing.TimeoutError):
-                if not self._cleanup_process.is_alive():
-                    raise CleanupProcessTerminatedError()
+                for process in self._cleanup_processes:
+                    if not process.is_alive():
+                        raise CleanupProcessTerminatedError()
 
     @contextlib.contextmanager
     def database(self) -> Generator[DatabaseParams, None, None]:
@@ -195,7 +204,8 @@ class DatabasePool:
             self._dirty_dbs.put(database)
 
     def stop(self):
-        self._cleaner.stop()
+        for cleaner in self._cleaners:
+            cleaner.stop()
 
 
 class DatabaseParamsDict(TypedDict):
@@ -244,7 +254,8 @@ def get_free_port() -> int:
 def database_pool(
     *,
     postgres_image_tag: str = "latest",
-    max_pool_size: int = 5,
+    max_pool_size: int = 10,
+    cleaning_workers: int = 5,
     docker_command: str = "docker",
     setup_db: Callable[[DatabaseParams], None] = _noop_setup_db,
 ) -> Generator[DatabasePool, None, None]:
@@ -290,6 +301,7 @@ def database_pool(
             password=_PG_PASSWORD,
         ),
         max_pool_size=max_pool_size,
+        cleaning_workers=cleaning_workers,
         setup_db=setup_db
     )
     try:
