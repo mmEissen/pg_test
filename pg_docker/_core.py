@@ -26,6 +26,10 @@ def _noop_setup_db(db_params: DatabaseParams) -> None:
     return
 
 
+class _DBShuttingDownError(Exception):
+    pass
+
+
 class DatabaseCleaner:
     def __init__(
         self,
@@ -46,15 +50,21 @@ class DatabaseCleaner:
         cursor = connection.cursor()
         cursor.execute("COMMIT")
         return cursor
+    
+    def _execute_sql(self, sql: str) -> None:
+        try:
+            self._cursor.execute(sql)
+        except psycopg2.OperationalError as e:
+            raise _DBShuttingDownError() from e
 
     def create_db(self, db_params: DatabaseParams) -> None:
-        self._cursor.execute(
+        self._execute_sql(
             f"""
             CREATE USER {db_params.user}
                 PASSWORD '{db_params.password}'
             """
         )
-        self._cursor.execute(
+        self._execute_sql(
             f"""
             CREATE DATABASE {db_params.dbname}
                 OWNER = {db_params.user}
@@ -62,7 +72,7 @@ class DatabaseCleaner:
         )
 
     def drop_db(self, db_params: DatabaseParams) -> None:
-        self._cursor.execute(
+        self._execute_sql(
             f"""
             SELECT pg_terminate_backend(pg_stat_activity.pid)
             FROM pg_stat_activity
@@ -70,19 +80,19 @@ class DatabaseCleaner:
             AND pg_stat_activity.datname = '{db_params.dbname}'
             """
         )
-        self._cursor.execute(
+        self._execute_sql(
             f"""
             DROP DATABASE IF EXISTS {db_params.dbname}
         """
         )
-        self._cursor.execute(
+        self._execute_sql(
             f"""
             DROP USER IF EXISTS {db_params.user}
             """
         )
 
     def drop_all_connections(self) -> None:
-        self._cursor.execute(
+        self._execute_sql(
             """
             SELECT pg_terminate_backend(pg_stat_activity.pid)
             FROM pg_stat_activity
@@ -104,7 +114,10 @@ class DatabaseCleaner:
         self,
     ) -> None:
         while not self._stop_event.is_set():
-            self.maybe_clean_a_dirty_db()
+            try:
+                self.maybe_clean_a_dirty_db()
+            except _DBShuttingDownError:
+                break
         self.drop_all_connections()
         self._cursor.close()
         self._cursor.connection.close()
@@ -254,11 +267,16 @@ def database_pool(
         [
             docker_command,
             "run",
+            "--tmpfs",
+            "/var/lib/postgresql/data"
             "--rm",
             "-t",
             f"-p{port}:5432",
             f"-ePOSTGRES_PASSWORD={_PG_PASSWORD}",
             f"postgres:{postgres_image_tag}",
+            "-c", "fsync=off",
+            "-c", "synchronous_commit=off",
+            "-c", "full_page_writes=off",
         ],
         stderr=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
